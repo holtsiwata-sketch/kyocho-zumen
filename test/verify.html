@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>計算エンジン検証</title>
+<style>
+  body { font: 14px/1.6 "Yu Gothic UI", Meiryo, sans-serif; margin: 24px; color: #1f2937; background: #fff; }
+  table { border-collapse: collapse; margin: 8px 0 20px; }
+  td, th { border: 1px solid #d1d5db; padding: 3px 10px; text-align: right; }
+  th { background: #f3f4f6; }
+  .ok { color: #15803d; font-weight: 700; } .ng { color: #dc2626; font-weight: 700; }
+</style>
+</head>
+<body>
+<h1>計算エンジン検証(JEITA 計算事例集 3-7 レベル / 3-8 C/N)</h1>
+<div id="out"></div>
+<script src="../js/lib.js"></script>
+<script src="../js/sample.js"></script>
+<script>
+  const m = KZ.sample();
+  const r = KZ.compute(m);
+  const b2 = m.nodes.find((n) => n.p.label === 'ブースタ(2段目)');
+  const e = m.edges.find((x) => x.to.n === b2.id);
+  const cases = [
+    ['ブースタ(2段目)到達レベル', r.edgeIn[e.id], [67.4, 67.9, 75.3, 75.2, 73.0, 70.7, 68.2]],
+    ['ブースタ(2段目)出力', r.out[b2.id].out, [94.4, 94.9, 96.4, 100.5, 103.9, 106.1, 108.2]],
+    ['テレビ端子出力', r.term[m.checkNode], [69.5, 68.8, 66.5, 68.7, 65.9, 63.3, 59.8]],
+  ];
+  // JEITA 3-8 ホーム共同受信 C/N (710MHz と 3224MHz のみ比較、他は null)
+  const h = KZ.homeSample();
+  const hr = KZ.compute(h);
+  const only = (a, b) => [null, a, null, null, null, null, b];
+  const pickV = (v) => [null, v[1], null, null, null, null, v[6]];
+  cases.push(
+    ['[3-8] テレビ端子出力', pickV(hr.term[h.checkNode]), only(53.3, 56.0)],
+    ['[3-8] 受像機入力レベル', pickV(hr.cn[h.checkNode].rxLevel), only(50.9, 50.2)],
+    ['[3-8] 受像機単体 C/N', pickV(hr.cn[h.checkNode].rxUnit), only(41.6, 32.8)],
+    ['[3-8] 総合 C/N(アンテナ+ブースタ+受像機)', pickV(hr.cn[h.checkNode].total), only(31.1, 18.8)],
+  );
+  const bId = h.nodes.find((n) => n.type === 'booster').id;
+  cases.push(['[3-8] ブースタ単体 C/N', pickV(hr.unitCn[bId]), only(40.0, 50.5)]);
+
+  let all = true;
+  const html = cases.map(([name, got, exp]) => {
+    const g = got.map((x) => (x == null ? null : Math.round(x * 10) / 10));
+    const ok = g.every((x, i) => exp[i] == null || Math.abs(x - exp[i]) < 0.05);
+    all = all && ok;
+    return `<h3>${name} <span class="${ok ? 'ok' : 'ng'}">${ok ? 'OK' : 'NG'}</span></h3>
+      <table><tr><th></th>${KZ.FREQS.map((f) => `<th>${f}MHz</th>`).join('')}</tr>
+      <tr><th>計算</th>${g.map((x, i) => `<td>${exp[i] == null || x == null ? '—' : x.toFixed(1)}</td>`).join('')}</tr>
+      <tr><th>JEITA</th>${exp.map((x) => `<td>${x == null ? '—' : x.toFixed(1)}</td>`).join('')}</tr></table>`;
+  }).join('');
+  document.getElementById('out').innerHTML =
+    `<p class="${all ? 'ok' : 'ng'}">${all ? 'すべて一致' : '不一致あり'}</p>` + html +
+    `<p>警告: ${r.warnings.length ? r.warnings.map((w) => w.msg).join(' / ') : 'なし'}</p>`;
+  document.title = all ? 'PASS' : 'FAIL';
+</script>
+</body>
+</html>
