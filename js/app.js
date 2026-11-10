@@ -15,7 +15,7 @@
     cn: Object.assign({}, KZ.CN_DEFAULT),
   });
 
-  let model = loadLocal() || KZ.sample();
+  let model = loadLocal() || normalize(KZ.sample());
   let res = null, num = { nodes: {}, edges: {} };
   let sel = null;                 // {k:'n'|'e', id}
   let view = { x: 0, y: 0, k: 1 };
