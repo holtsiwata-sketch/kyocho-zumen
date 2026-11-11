@@ -2,15 +2,17 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#ffffff">
 <title>共聴系統図エディタ</title>
-<link rel="stylesheet" href="style.css?v=10">
+<link rel="stylesheet" href="style.css?v=12">
 </head>
 <body>
 <header id="toolbar">
+  <button id="menuBtn" class="m-only" aria-label="メニュー" aria-expanded="false">☰</button>
   <div class="brand">共聴系統図</div>
   <input id="docTitle" class="title-input" placeholder="図面名">
-  <div class="tb-group">
+  <div class="tb-group collapsible">
     <button data-act="new" title="新規">新規</button>
     <button data-act="open" title="JSONファイルを開く">開く</button>
     <button data-act="save" title="JSONで保存">保存</button>
@@ -26,13 +28,13 @@
     <button data-act="zoomin" title="拡大">＋</button>
     <button data-act="zoomout" title="縮小">－</button>
   </div>
-  <div class="tb-group">
+  <div class="tb-group collapsible">
     <label class="chk"><input type="checkbox" id="showNum" checked>番号</label>
     <label class="chk"><input type="checkbox" id="showCable" checked>ケーブル</label>
     <label class="chk"><input type="checkbox" id="showLvl" checked>端子レベル</label>
     <label class="chk"><input type="checkbox" id="showCN">C/N</label>
   </div>
-  <div class="tb-group right">
+  <div class="tb-group right collapsible">
     <button data-act="svg">SVG出力</button>
     <button data-act="png">PNG出力</button>
     <button data-act="print">印刷</button>
@@ -68,10 +70,17 @@
   </aside>
 </main>
 
+<nav id="mnav" class="m-only" aria-label="パネル切替">
+  <button data-sheet="palette"><span class="ico">＋</span>部品</button>
+  <button data-sheet="props"><span class="ico">⚙</span>詳細</button>
+  <button data-sheet="calc"><span class="ico">▦</span>計算表</button>
+  <button data-sheet="check"><span class="ico">!</span>チェック<b id="mBadge"></b></button>
+</nav>
+
 <div id="print"></div>
 
-<script src="js/lib.js?v=10"></script>
-<script src="js/sample.js?v=10"></script>
-<script src="js/app.js?v=10"></script>
+<script src="js/lib.js?v=12"></script>
+<script src="js/sample.js?v=12"></script>
+<script src="js/app.js?v=12"></script>
 </body>
 </html>

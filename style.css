@@ -125,11 +125,90 @@ html, body { overflow: hidden; }
   .tb-group { padding-left: 6px; }
   #toolbar button { padding: 4px 7px; }
 }
-@media (max-width: 760px) {
-  #layout { grid-template-columns: 56px 1fr; grid-template-rows: 1fr 200px; }
-  #side { grid-column: 1 / -1; border-left: none; border-top: 1px solid var(--line); }
-  #center { grid-template-rows: 1fr 170px; }
-  .brand { display: none; }
+
+/* ---------- スマホ (幅760px以下、または高さ520px以下 = 横向きのスマホ) ---------- */
+.m-only { display: none; }
+.coarse .port { pointer-events: none; }
+.coarse .node.sel .port, .coarse #canvas.wiring .port.in { pointer-events: auto; opacity: .9; }
+.coarse .edge .hit { stroke-width: 18; }
+button, .pal-item, #mnav button { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+
+@media (max-width: 760px), (max-height: 520px) {
+  :root { --nav-h: 58px; --tb-h: 52px; }
+  .m-only { display: flex; }
+  html, body { font-size: 15px; }
+  input, select, textarea { font-size: 16px; min-height: 38px; }   /* iOS の自動ズーム防止 */
+  input[type=checkbox] { min-height: 0; width: 22px; height: 22px; }
+  input[type=number] { width: 110px; }
+
+  /* ツールバー: ☰ / 図面名 / 元に戻す・全体 */
+  #toolbar { height: var(--tb-h); padding: 0 8px; gap: 6px; overflow: visible; position: relative; z-index: 40; }
+  #toolbar .collapsible, .brand, [data-act=zoomin], [data-act=zoomout] { display: none; }
+  #toolbar button { min-width: 42px; min-height: 40px; padding: 4px 8px; font-size: 16px; }
+  #menuBtn { justify-content: center; align-items: center; font-size: 20px; }
+  .title-input { flex: 1; min-width: 0; width: auto; }
+  .tb-group { border-left: none; padding-left: 0; }
+  #toolbar.menu-open { position: fixed; inset: 0 0 auto 0; height: auto; flex-wrap: wrap; padding: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+  #toolbar.menu-open .collapsible { display: flex; flex-wrap: wrap; width: 100%; gap: 6px; padding: 8px 0 0; border-top: 1px solid var(--line); margin: 0; }
+  #toolbar.menu-open .chk { font-size: 15px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); }
+
+  /* 図面を全画面に */
+  #layout { display: block; height: calc(100% - var(--tb-h) - var(--nav-h) - env(safe-area-inset-bottom)); }
+  #center { display: block; height: 100%; }
+  #canvasWrap { height: 100%; }
+  #hint { left: 8px; right: 8px; bottom: 8px; font-size: 12px; text-align: center; }
+
+  /* 下からのシート */
+  #palette, #side, #bottom {
+    position: fixed; left: 0; right: 0; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom));
+    height: min(60vh, 560px); z-index: 30; display: block; overflow-y: auto;
+    background: var(--panel); border: none; border-top: 1px solid var(--line); border-radius: 14px 14px 0 0;
+    box-shadow: 0 -8px 24px rgba(0,0,0,.14); transform: translateY(115%); transition: transform .2s ease; visibility: hidden;
+  }
+  #bottom { display: flex; }
+  body.sheet-palette #palette, body.sheet-side #side, body.sheet-bottom #bottom { transform: none; visibility: visible; }
+
+  /* 部品パレット: 大きいタイル */
+  #palette { padding: 10px 12px 16px; }
+  .pal-group { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; margin-bottom: 12px; }
+  .pal-group h4 { display: block; grid-column: 1 / -1; font-size: 13px; margin: 2px 0 0; }
+  .pal-item { flex-direction: column; justify-content: center; gap: 2px; padding: 8px 4px; margin: 0; border: 1px solid var(--line); min-height: 76px; }
+  .pal-item span { display: block; font-size: 12px; text-align: center; line-height: 1.3; }
+
+  /* 詳細・チェック */
+  #props, #warnings { padding: 14px 16px; }
+  #side h3 { font-size: 17px; }
+  #side h5 { font-size: 13px; }
+  .field { margin-bottom: 8px; }
+  .field label { font-size: 14px; }
+  .note { font-size: 13px; }
+  .btnrow button { min-height: 42px; flex: 1; font-size: 15px; }
+  .warn-item { padding: 10px; font-size: 14px; }
+  .levels { font-size: 13px; }
+
+  /* 計算表 */
+  .tabs { padding: 6px 8px 0; overflow-x: auto; }
+  .tabs button { padding: 10px 12px; font-size: 14px; white-space: nowrap; }
+  table.grid { font-size: 13px; }
+  table.grid th, table.grid td { padding: 5px 8px; }
+  table.grid.stacked { width: 100%; table-layout: fixed; font-size: 12.5px; }
+  table.grid.stacked th, table.grid.stacked td { padding: 4px 2px; white-space: normal; }
+  table.grid.stacked tr.mlbl td { text-align: left; background: #f8fafc; color: var(--text); font-weight: 600; padding: 5px 6px; border-bottom-style: dashed; }
+  table.grid.stacked tr.mlbl.sub td { font-weight: 400; color: var(--muted); }
+  table.grid.stacked tr.mlbl.total td { background: #eef2f7; }
+  table.grid.stacked .lv { font-size: 10.5px; }
+
+  /* 下部ナビ */
+  #mnav { position: fixed; left: 0; right: 0; bottom: 0; height: calc(var(--nav-h) + env(safe-area-inset-bottom));
+    padding-bottom: env(safe-area-inset-bottom); background: var(--panel); border-top: 1px solid var(--line); z-index: 35; }
+  #mnav button { flex: 1; position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+    border: none; border-radius: 0; background: none; color: var(--muted); font-size: 12px; }
+  #mnav .ico { font-size: 19px; line-height: 1.1; }
+  #mnav button.on { color: var(--accent); font-weight: 700; }
+  #mnav button.has-sel::after { content: ""; position: absolute; top: 8px; right: calc(50% - 22px); width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  #mBadge { position: absolute; top: 5px; left: calc(50% + 8px); min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+    background: var(--ng); color: #fff; font-size: 11px; line-height: 18px; }
+  #mBadge:empty { display: none; }
 }
 
 /* print */
@@ -137,7 +216,7 @@ html, body { overflow: hidden; }
 @media print {
   @page { size: A3 landscape; margin: 10mm; }
   body { background: #fff; }
-  #toolbar, #layout { display: none !important; }
+  #toolbar, #layout, #mnav { display: none !important; }
   #print { display: block; }
   #print svg { width: 100%; height: auto; max-height: 180mm; }
   #print table { margin-top: 6mm; }

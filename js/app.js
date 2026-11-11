@@ -26,6 +26,25 @@
   const show = { num: true, cable: true, lvl: true, cn: false };
   let activeTab = 'calc';
 
+  // スマホ・タッチ対応
+  const mq = window.matchMedia('(max-width: 760px), (max-height: 520px)');
+  const isMobile = () => mq.matches;
+  const coarse = window.matchMedia('(pointer: coarse)').matches;
+  if (coarse) document.body.classList.add('coarse');
+  const pointers = new Map();   // 押されている指 (ピンチ判定)
+  let pinch = null;
+  let pendingWire = null;        // タップ配線: 出力端子を選んだ状態
+  let sheetKey = null;           // 開いている下部シート
+  // タッチでは端子を画面上で約12pxの大きさに保つ(ズームに追従して描き直す)
+  // (極端に縮小したときに記号を覆い隠さないよう上限あり)
+  const portR = () => (coarse ? Math.max(4, Math.min(12 / view.k, 14)) : 4);
+  let portTimer = null;
+  const refreshPorts = () => {
+    if (!coarse) return;
+    clearTimeout(portTimer);
+    portTimer = setTimeout(() => { if (!drag && !pinch) renderCanvasOnly(); }, 150);
+  };
+
   /* ---------- 永続化 ---------- */
   function loadLocal() {
     try { const s = localStorage.getItem(STORE); return s ? normalize(JSON.parse(s)) : null; } catch (e) { return null; }
@@ -219,7 +238,7 @@
       // ポート
       if (live) {
         KZ.ports(n).forEach((q) => {
-          g += `<circle class="port ${q.kind}" data-port="${n.id}:${q.id}" cx="${q.x}" cy="${q.y}" r="4"/>`;
+          g += `<circle class="port ${q.kind}" data-port="${n.id}:${q.id}" cx="${q.x}" cy="${q.y}" r="${portR().toFixed(1)}"/>`;
         });
       }
       out.push(g + '</g>');
@@ -237,6 +256,7 @@
     renderWarnings();
     renderBottom();
     $('#docTitle').value = model.title || '';
+    updateMobileState();
     saveLocal();
   }
   function renderCanvasOnly() {
@@ -246,7 +266,36 @@
   }
   function applyView() {
     viewport.setAttribute('transform', `translate(${view.x},${view.y}) scale(${view.k})`);
+    refreshPorts();
   }
+
+  /* ---------- スマホ: 下部シート・メニュー ---------- */
+  const SHEETS = { palette: 'palette', props: 'side', calc: 'bottom', check: 'side' };
+  function openSheet(key) {
+    sheetKey = key && key !== sheetKey ? key : null;
+    document.body.classList.remove('sheet-palette', 'sheet-side', 'sheet-bottom');
+    if (sheetKey) document.body.classList.add('sheet-' + SHEETS[sheetKey]);
+    if (sheetKey === 'props') $('#side').scrollTop = 0;
+    if (sheetKey === 'check') $('#side').scrollTop = $('#warnings').offsetTop - 8;
+    if (sheetKey === 'calc') renderBottom();
+    updateMobileState();
+  }
+  function updateMobileState() {
+    document.querySelectorAll('#mnav [data-sheet]').forEach((b) => {
+      b.classList.toggle('on', b.dataset.sheet === sheetKey);
+      if (b.dataset.sheet === 'props') b.classList.toggle('has-sel', !!sel);
+    });
+    if (res) $('#mBadge').textContent = res.warnings.length ? String(res.warnings.length) : '';
+    if (isMobile()) setHint();
+  }
+  document.querySelectorAll('#mnav [data-sheet]').forEach((b) => b.addEventListener('click', () => openSheet(b.dataset.sheet)));
+  $('#menuBtn').addEventListener('click', () => {
+    const open = $('#toolbar').classList.toggle('menu-open');
+    $('#menuBtn').setAttribute('aria-expanded', String(open));
+    if (open) openSheet(null);
+  });
+  const closeMenu = () => { $('#toolbar').classList.remove('menu-open'); $('#menuBtn').setAttribute('aria-expanded', 'false'); };
+  mq.addEventListener('change', () => { openSheet(null); closeMenu(); setHint(); requestAnimationFrame(fit); });
   function fit() {
     const b = bounds();
     const r = svg.getBoundingClientRect();
@@ -297,6 +346,7 @@
       b.addEventListener('click', () => {
         tool = tool && tool.key === b.dataset.pal ? null : { type: t, p, key: b.dataset.pal };
         updateArmed();
+        if (tool && isMobile()) openSheet(null);   // 図面を見せて配置位置をタップしてもらう
       });
       b.addEventListener('dragstart', (ev) => { ev.dataTransfer.setData('text/plain', b.dataset.pal); });
     });
@@ -307,9 +357,16 @@
     setHint();
   }
   function setHint(msg) {
+    if (!msg && isMobile()) {
+      const n = sel && sel.k === 'n' ? nodeById(sel.id) : null;
+      msg = tool ? '置きたい場所をタップ(もう一度部品を選ぶと取消)'
+        : pendingWire ? '接続先の緑の端子(または部品)をタップ。背景タップで取消'
+        : n && !['box', 'text'].includes(n.type) ? `${KZ.displayName(n)}を選択中: 橙の端子をタップ→接続先をタップで配線 /「詳細」で設定`
+        : 'タップで選択・ドラッグで移動 / 2本指で拡大縮小・移動';
+    }
     $('#hint').textContent = msg || (tool
       ? '図面をクリックして配置(Shift+クリックで連続配置、Escで解除)'
-      : 'ドラッグ: 移動 / 出力端子(橙)から入力端子(緑)へドラッグ: 配線 / 背景ドラッグ: スクロール / ホイール: 拡大縮小');
+      : 'ドラッグ: 移動 / 出力端子(橙)から入力端子(緑)へドラッグ、または端子をクリック→接続先をクリック: 配線 / 背景ドラッグ: スクロール / ホイール: 拡大縮小');
   }
   function addNode(type, p, x, y) {
     snapshot();
@@ -322,7 +379,48 @@
   }
 
   /* ---------- ポインタ操作 ---------- */
+  // 2本指ピンチ: 指の中点の下にある図面位置を固定したまま拡大縮小・移動
+  function startPinch() {
+    if (drag && drag.moved) render();
+    drag = null;
+    overlay.innerHTML = '';
+    svg.classList.remove('panning');
+    const [a, b] = [...pointers.values()];
+    const r = svg.getBoundingClientRect();
+    pinch = { d0: Math.hypot(a.x - b.x, a.y - b.y) || 1, k0: view.k, mx: (a.x + b.x) / 2 - r.left, my: (a.y + b.y) / 2 - r.top, vx: view.x, vy: view.y };
+  }
+  function endPointer(ev) {
+    pointers.delete(ev.pointerId);
+    if (pinch) {
+      if (pointers.size < 2) pinch = null;
+      return true;
+    }
+    return false;
+  }
+  svg.addEventListener('pointercancel', (ev) => {
+    endPointer(ev);
+    if (drag && drag.moved) render();
+    drag = null;
+    overlay.innerHTML = '';
+    svg.classList.remove('panning');
+    if (!pendingWire) svg.classList.remove('wiring');
+  });
+
   svg.addEventListener('pointerdown', (ev) => {
+    if (ev.pointerType === 'touch') {           // ピンチ判定はタッチのみ(マウスは対象外)
+      if (ev.isPrimary) { pointers.clear(); pinch = null; }
+      pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (pointers.size === 2) { startPinch(); return; }
+      if (pointers.size > 2) return;
+    }
+    if (pendingWire && ev.button === 0) {      // タップ配線の2回目: 接続先
+      const d = pendingWire;
+      pendingWire = null;
+      svg.classList.remove('wiring');
+      finishWire(d, ev.clientX, ev.clientY);
+      setHint();
+      return;
+    }
     if (ev.button === 1 || (ev.button === 0 && ev.altKey)) { startPan(ev); return; }
     if (ev.button !== 0) return;
     const t = ev.target;
@@ -339,7 +437,7 @@
     if (portEl) {
       const [nid, pid] = portEl.dataset.port.split(':');
       const pa = portAbs(nodeById(nid), pid);
-      drag = { mode: 'wire', nid, pid, kind: pa.kind, start: pa };
+      drag = { mode: 'wire', nid, pid, kind: pa.kind, start: pa, sx: ev.clientX, sy: ev.clientY };
       svg.classList.add('wiring');
       svg.setPointerCapture(ev.pointerId);
       return;
@@ -355,16 +453,16 @@
       sel = { k: 'n', id: n.id };
       drag = { mode: 'move', n, ox: w.x - n.x, oy: w.y - n.y, moved: false };
       svg.setPointerCapture(ev.pointerId);
-      renderCanvasOnly(); renderProps(); renderBottom();
+      renderCanvasOnly(); renderProps(); renderBottom(); updateMobileState();
       return;
     }
     if (edgeEl) {
       sel = { k: 'e', id: edgeEl.dataset.edge };
-      renderCanvasOnly(); renderProps(); renderBottom();
+      renderCanvasOnly(); renderProps(); renderBottom(); updateMobileState();
       return;
     }
     sel = null;
-    renderCanvasOnly(); renderProps(); renderBottom();
+    renderCanvasOnly(); renderProps(); renderBottom(); updateMobileState();
     startPan(ev);
   });
   function startPan(ev) {
@@ -373,6 +471,17 @@
     svg.setPointerCapture(ev.pointerId);
   }
   svg.addEventListener('pointermove', (ev) => {
+    if (pointers.has(ev.pointerId)) pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+    if (pinch && pointers.size >= 2) {
+      const [a, b] = [...pointers.values()];
+      const r = svg.getBoundingClientRect();
+      const k = Math.min(4, Math.max(0.15, pinch.k0 * Math.hypot(a.x - b.x, a.y - b.y) / pinch.d0));
+      const mx = (a.x + b.x) / 2 - r.left, my = (a.y + b.y) / 2 - r.top;
+      const wx = (pinch.mx - pinch.vx) / pinch.k0, wy = (pinch.my - pinch.vy) / pinch.k0;
+      view = { k, x: mx - wx * k, y: my - wy * k };
+      applyView();
+      return;
+    }
     if (!drag) return;
     const w = toWorld(ev);
     if (drag.mode === 'pan') {
@@ -396,6 +505,7 @@
     }
   });
   svg.addEventListener('pointerup', (ev) => {
+    if (endPointer(ev)) return;
     if (!drag) return;
     const d = drag;
     drag = null;
@@ -403,7 +513,19 @@
     overlay.innerHTML = '';
     if (d.mode === 'move' || d.mode === 'resize') { render(); return; }
     if (d.mode !== 'wire') return;
-    const el = document.elementFromPoint(ev.clientX, ev.clientY);
+    // 端子をタップしただけ(ほぼ動かさず離した)なら、次のタップで接続先を選ぶモードへ
+    if (Math.hypot(ev.clientX - d.sx, ev.clientY - d.sy) < 8) {
+      pendingWire = d;
+      svg.classList.add('wiring');
+      overlay.innerHTML = `<circle cx="${d.start.x}" cy="${d.start.y}" r="${(portR() * 1.6).toFixed(1)}" fill="none" stroke="#2563eb" stroke-width="${(2 / view.k).toFixed(2)}"/>`;
+      setHint(isMobile() ? null : '接続先の入力端子(緑)または部品をクリック。背景クリックで取消');
+      return;
+    }
+    finishWire(d, ev.clientX, ev.clientY);
+  });
+  function finishWire(d, cx, cy) {
+    overlay.innerHTML = '';
+    const el = document.elementFromPoint(cx, cy);
     if (!el) return;
     let tn = null, tp = null;
     const portEl = el.closest('[data-port]');
@@ -425,7 +547,7 @@
     const from = d.kind === 'out' ? { n: d.nid, p: d.pid } : { n: tn, p: tp };
     const to = d.kind === 'out' ? { n: tn, p: tp } : { n: d.nid, p: d.pid };
     connect(from, to);
-  });
+  }
   function connect(from, to) {
     snapshot();
     model.edges = model.edges.filter((e) => !(e.to.n === to.n && e.to.p === to.p) && !(e.from.n === from.n && e.from.p === from.p));
@@ -459,7 +581,7 @@
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'z' && !typing) { ev.preventDefault(); ev.shiftKey ? redo() : undo(); return; }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'y' && !typing) { ev.preventDefault(); redo(); return; }
     if (typing) return;
-    if (ev.key === 'Escape') { tool = null; updateArmed(); sel = null; render(); }
+    if (ev.key === 'Escape') { tool = null; pendingWire = null; overlay.innerHTML = ''; svg.classList.remove('wiring'); updateArmed(); sel = null; render(); }
     if ((ev.key === 'Delete' || ev.key === 'Backspace') && sel) { ev.preventDefault(); removeSel(); }
     if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'd' && sel && sel.k === 'n') { ev.preventDefault(); duplicate(); }
     if (sel && sel.k === 'n' && ev.key.startsWith('Arrow')) {
@@ -665,7 +787,7 @@
       (ws.length ? ws.map((w, i) => `<div class="warn-item ${w.level}" data-wi="${i}">${esc(w.msg)}</div>`).join('') : `<div class="note ok">問題は見つかりませんでした。</div>`);
     el.querySelectorAll('[data-wi]').forEach((d) => d.addEventListener('click', () => {
       const w = ws[+d.dataset.wi];
-      if (w.node) { sel = { k: 'n', id: w.node }; centerOn(nodeById(w.node)); render(); }
+      if (w.node) { sel = { k: 'n', id: w.node }; if (isMobile()) openSheet(null); centerOn(nodeById(w.node)); render(); }
     }));
   }
   function centerOn(n) {
@@ -684,10 +806,58 @@
     renderBottom();
   }));
   function renderBottom() {
-    if (activeTab === 'calc') $('#tab-calc').innerHTML = calcTableHtml();
-    if (activeTab === 'list') { $('#tab-list').innerHTML = outletListHtml(true); bindList(); }
+    const m = isMobile();
+    if (activeTab === 'calc') {
+      const h = calcTableHtml();
+      $('#tab-calc').innerHTML = m ? stackTable(h, 3, stackedBandHead()) : h;
+    }
+    if (activeTab === 'list') {
+      const h = outletListHtml(true);
+      const head = `<tr><th>地デジ<br>dBμV</th><th>BS・CS<br>dBμV</th><th>C/N<br>地デジ</th><th>C/N<br>BS・CS</th><th>判定</th></tr>`;
+      $('#tab-list').innerHTML = m ? stackTable(h, 4, head).replace(/colspan="7"/g, 'colspan="5"') : h;
+      bindList();
+    }
     if (activeTab === 'legend') $('#tab-legend').innerHTML = legendHtml();
   }
+  /* スマホ用: 先頭 labelCols 列(ラベル)を1行にまとめ、その下に数値の行を並べた縦積みの表に組み替える
+   * (rowspan / colspan を列の占有で追跡して変換) */
+  function stackTable(html, labelCols, headHtml) {
+    const tpl = document.createElement('template');
+    tpl.innerHTML = html;
+    const table = tpl.content.querySelector('table');
+    if (!table) return html;
+    let carry = [];       // {col, span, left}
+    let out = '';
+    [...table.rows].forEach((tr) => {
+      if (tr.querySelector('th')) return;      // 見出しは headHtml で置き換え
+      const labels = [], values = [];
+      let col = 0;
+      const occupied = (c) => carry.some((k) => k.left > 0 && c >= k.col && c < k.col + k.span);
+      [...tr.cells].forEach((td) => {
+        while (occupied(col)) col++;
+        const span = td.colSpan || 1;
+        if (col < labelCols) {
+          const t = td.textContent.trim();
+          if (t) labels.push(t);
+        } else {
+          values.push(td.outerHTML.replace(/<td/, `<td colspan="${span}"`).replace(/colspan="\d+"([^>]*)colspan="\d+"/, `colspan="${span}"$1`));
+        }
+        if (td.rowSpan > 1) carry.push({ col, span, left: td.rowSpan });
+        col += span;
+      });
+      carry.forEach((k) => { k.left--; });
+      carry = carry.filter((k) => k.left > 0);
+      const attrs = [...tr.attributes].map((a) => `${a.name}="${esc(a.value)}"`).join(' ');
+      const cls = tr.className;
+      if (labels.length) out += `<tr ${attrs.replace(/class="[^"]*"/, '')} class="mlbl ${cls}"><td colspan="${KZ.FREQS.length}">${esc(labels.join('  '))}</td></tr>`;
+      out += `<tr ${attrs}>${values.join('')}</tr>`;
+    });
+    const before = html.slice(0, html.indexOf('<table'));
+    return `${before}<table class="grid stacked">${headHtml}${out}</table>`;
+  }
+  const stackedBandHead = () => `<tr><th colspan="2">地デジ</th><th colspan="5">BS・110°CS (MHz)</th></tr>
+    <tr>${KZ.FREQS.map((f) => `<th>${f}</th>`).join('')}</tr>`;
+
   function bandHead() {
     return `<tr><th colspan="3" rowspan="2">機器</th><th colspan="2">地上デジタル</th><th colspan="5">BS・110°CS</th></tr>
       <tr>${KZ.FREQS.map((f) => `<th>${f}MHz</th>`).join('')}</tr>`;
@@ -771,6 +941,7 @@
   function bindList() {
     $('#tab-list').querySelectorAll('[data-oid]').forEach((tr) => tr.addEventListener('click', () => {
       sel = { k: 'n', id: tr.dataset.oid };
+      if (isMobile()) { activeTab = 'calc'; document.querySelector('.tabs [data-tab=calc]').click(); }
       centerOn(nodeById(sel.id));
       render();
     }));
@@ -863,7 +1034,10 @@
     png: exportPng,
     print: doPrint,
   };
-  document.querySelectorAll('#toolbar [data-act]').forEach((b) => b.addEventListener('click', () => ACTIONS[b.dataset.act]()));
+  document.querySelectorAll('#toolbar [data-act]').forEach((b) => b.addEventListener('click', () => {
+    if (b.closest('.collapsible')) closeMenu();
+    ACTIONS[b.dataset.act]();
+  }));
   $('#fileInput').addEventListener('change', (ev) => {
     const f = ev.target.files[0];
     if (!f) return;
