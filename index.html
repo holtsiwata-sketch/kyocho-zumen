@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#ffffff">
 <title>共聴系統図エディタ</title>
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
 <header id="toolbar">
@@ -51,6 +51,13 @@
         <g id="viewport"><g id="world"></g><g id="overlay"></g></g>
       </svg>
       <div id="hint"></div>
+      <div id="selbar" hidden>
+        <span id="selName"></span>
+        <button data-sel="del" class="danger">削除</button>
+        <button data-sel="dup">複製</button>
+        <button data-sel="props">詳細</button>
+        <button data-sel="clear" aria-label="選択解除">✕</button>
+      </div>
     </div>
     <div id="bottom">
       <nav class="tabs">
@@ -79,8 +86,8 @@
 
 <div id="print"></div>
 
-<script src="js/lib.js?v=12"></script>
-<script src="js/sample.js?v=12"></script>
-<script src="js/app.js?v=12"></script>
+<script src="js/lib.js?v=13"></script>
+<script src="js/sample.js?v=13"></script>
+<script src="js/app.js?v=13"></script>
 </body>
 </html>

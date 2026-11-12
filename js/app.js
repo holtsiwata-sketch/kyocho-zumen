@@ -286,8 +286,28 @@
       if (b.dataset.sheet === 'props') b.classList.toggle('has-sel', !!sel);
     });
     if (res) $('#mBadge').textContent = res.warnings.length ? String(res.warnings.length) : '';
+    // 選択中の操作バー(スマホ): 削除・複製・詳細・選択解除
+    const bar = $('#selbar');
+    const item = sel && (sel.k === 'n' ? nodeById(sel.id) : edgeById(sel.id));
+    bar.hidden = !item;
+    if (item) {
+      const no = sel.k === 'n' ? num.nodes[sel.id] : num.edges[sel.id];
+      const name = sel.k === 'n' ? (item.type === 'text' ? `テキスト「${item.p.text}」` : KZ.displayName(item)) : `ケーブル ${KZ.cableText(item)}`;
+      $('#selName').textContent = (no ? KZ.circled(no) + ' ' : '') + name;
+      bar.querySelector('[data-sel=dup]').hidden = sel.k !== 'n';
+    }
     if (isMobile()) setHint();
   }
+  $('#selbar').addEventListener('click', (ev) => {
+    const b = ev.target.closest('[data-sel]');
+    if (!b || !sel) return;
+    const a = b.dataset.sel;
+    if (a === 'del') removeSel();
+    else if (a === 'dup') duplicate();
+    else if (a === 'props') { if (sheetKey !== 'props') openSheet('props'); }
+    else if (a === 'clear') { sel = null; render(); }
+  });
+  $('#selbar').addEventListener('pointerdown', (ev) => ev.stopPropagation());
   document.querySelectorAll('#mnav [data-sheet]').forEach((b) => b.addEventListener('click', () => openSheet(b.dataset.sheet)));
   $('#menuBtn').addEventListener('click', () => {
     const open = $('#toolbar').classList.toggle('menu-open');
@@ -361,7 +381,7 @@
       const n = sel && sel.k === 'n' ? nodeById(sel.id) : null;
       msg = tool ? '置きたい場所をタップ(もう一度部品を選ぶと取消)'
         : pendingWire ? '接続先の緑の端子(または部品)をタップ。背景タップで取消'
-        : n && !['box', 'text'].includes(n.type) ? `${KZ.displayName(n)}を選択中: 橙の端子をタップ→接続先をタップで配線 /「詳細」で設定`
+        : n && !['box', 'text'].includes(n.type) ? '橙の端子をタップ→接続先をタップで配線 / 削除・設定は上のバーから'
         : 'タップで選択・ドラッグで移動 / 2本指で拡大縮小・移動';
     }
     $('#hint').textContent = msg || (tool
@@ -604,6 +624,7 @@
     }
     sel = null;
     render();
+    if (isMobile()) setHint('削除しました(上の ↶ で元に戻せます)');
   }
   function duplicate() {
     const n = nodeById(sel.id);

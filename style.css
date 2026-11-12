@@ -128,6 +128,7 @@ html, body { overflow: hidden; }
 
 /* ---------- スマホ (幅760px以下、または高さ520px以下 = 横向きのスマホ) ---------- */
 .m-only { display: none; }
+#selbar { display: none; }
 .coarse .port { pointer-events: none; }
 .coarse .node.sel .port, .coarse #canvas.wiring .port.in { pointer-events: auto; opacity: .9; }
 .coarse .edge .hit { stroke-width: 18; }
@@ -157,6 +158,16 @@ button, .pal-item, #mnav button { touch-action: manipulation; -webkit-tap-highli
   #center { display: block; height: 100%; }
   #canvasWrap { height: 100%; }
   #hint { left: 8px; right: 8px; bottom: 8px; font-size: 12px; text-align: center; }
+
+  /* 選択中の操作バー(図面の上部) */
+  #selbar { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 5; display: flex; align-items: center; gap: 6px;
+    padding: 6px; background: rgba(255,255,255,.96); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 4px 14px rgba(0,0,0,.12); }
+  #selbar[hidden] { display: none; }
+  #selName { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; font-size: 14px; padding-left: 4px; }
+  #selbar button { min-height: 40px; padding: 4px 12px; font-size: 15px; }
+  #selbar button.danger { border-color: #fca5a5; background: #fef2f2; }
+  #selbar button[data-sel=clear] { padding: 4px 10px; }
+  .coarse .boxhit { stroke-width: 24; }
 
   /* 下からのシート */
   #palette, #side, #bottom {
